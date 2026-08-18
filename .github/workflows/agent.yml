@@ -28,4 +28,7 @@ jobs:
           printf '%s' "$TOKEN_JSON" > token.json
           printf '%s' "$ENV_FILE" > .env
 
-      - run: python -m agent.run --once
+      - name: Poll every 20s for ~4.5 minutes (until the next scheduled run takes over)
+        env:
+          POLL_INTERVAL_SECONDS: "20"
+        run: timeout 270 python -m agent.run || true
