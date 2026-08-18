@@ -23,20 +23,23 @@ Most predictive field for deal likelihood, so it carries the most weight.
 | 3–6 months | 8 |
 | Just researching / no timeline | 0 |
 
-### 3. Budget Fit — 25 points
-Compare the submitted budget to the price of the listing they inquired about, or to typical inventory in their preferred area if no specific listing.
-| Form answer | Points |
+### 3. Budget — 25 points
+Absolute threshold on the submitted budget amount - not compared against a per-area or per-listing price, so it needs no per-area pricing data to maintain.
+| Budget | Points |
 |---|---|
-| Within ~10% of relevant listing/inventory price | 25 |
-| Within ~25%, plausible with negotiation | 12 |
-| Far below or unrealistic for the market | 0 |
+| Over $250k | 25 |
+| $150k – $250k | 16 |
+| $50k – $150k | 8 |
+| Under $50k | 0 |
 
 ### 4. Preferred Area Match — 20 points
-| Form answer | Points |
+The submitted area (free text, e.g. "Istanbul, Basaksehir") is matched against the **Reference Data** sheet tab (`Area | Tier`), which classifies each district as Low/Medium/Expensive based on its real-world price tier - not per-listing coverage. Matching is case/diacritic-insensitive (handles Turkish characters) and matches by the district name appearing anywhere in the submitted text.
+| Area tier | Points |
 |---|---|
-| Matches an active listing exactly | 20 |
-| Matches the company's general coverage area | 10 |
-| Outside the company's coverage area entirely | 0 |
+| Expensive | 20 |
+| Medium | 14 |
+| Low | 7 |
+| Not found in Reference Data | 0 |
 
 **Total: 100 points**
 
@@ -63,8 +66,8 @@ Leads with either flag skip scoring and go to a human to check before any automa
 {
   "financing": {"answer": "Pre-approved mortgage", "score": 25},
   "timeline": {"answer": "Within 30 days", "score": 25},
-  "budget_fit": {"answer": "1.4M vs 1.35M listing", "score": 25},
-  "area_match": {"answer": "Exact match to inquired listing", "score": 20},
+  "budget_fit": {"answer": "180,000", "score": 16},
+  "area_match": {"answer": "Istanbul, Basaksehir (Medium)", "score": 14},
   "total_score": 95,
   "label": "hot",
   "flags": []
@@ -73,5 +76,5 @@ Leads with either flag skip scoring and go to a human to check before any automa
 
 ## Two Implementation Notes
 
-- **If the form fields are dropdown/select values** (most likely), this whole thing is a plain lookup table — `tools/score_lead.py` maps each answer string to its point value and sums them. No LLM call needed for this step at all.
-- **If any field is free text** (e.g. budget typed as "around 1.3-1.5m" or area typed as "somewhere near downtown"), that field needs a light normalization pass first — an LLM or regex step that maps the free text to the closest structured bucket above — before the lookup table runs. Keep that normalization step separate and logged, so you can see when it guesses wrong.
+- **Financing and Timeline are dropdown/select values**, so those two are a plain lookup table — `tools/score_lead.py` maps each answer string to its point value directly. No LLM call for this step at all.
+- **Budget and Preferred area are free text**, so each gets a regex-based normalization pass before scoring (`tools/score_lead.py`): Budget parses shorthand like "100k $" or "1.2m" into a number; Area is matched against the Reference Data district list case/diacritic-insensitively. Both are deterministic regex, not an LLM call - kept separate and logged (the `answer` field in the output shows exactly what was parsed/matched) so a bad parse is visible, not silent.

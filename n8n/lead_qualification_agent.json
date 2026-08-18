@@ -1,0 +1,210 @@
+{
+  "name": "Lead Qualification Agent (visual mirror)",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "New Form Submission",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [0, 320],
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "documentId": { "__rl": true, "value": "16-nZM9tV6XcI2knna5NlZ4crN5IUZH3mmUMPUoW7dxI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Form responses 1", "mode": "name" },
+        "event": "rowAdded"
+      }
+    },
+    {
+      "id": "readRef",
+      "name": "Read Reference Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [260, 320],
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "value": "16-nZM9tV6XcI2knna5NlZ4crN5IUZH3mmUMPUoW7dxI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Reference Data", "mode": "name" }
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 320],
+      "parameters": {
+        "jsCode": "const DISPOSABLE = [\"mailinator.com\",\"guerrillamail.com\",\"tempmail.com\",\"10minutemail.com\",\"throwawaymail.com\",\"yopmail.com\",\"trashmail.com\",\"getnada.com\"];\nconst lead = $input.item.json;\n\nfunction isValidPhone(raw) {\n  const digits = (raw || \"\").replace(/\\D/g, \"\");\n  return digits.length >= 7 && digits.length <= 15;\n}\nfunction isDisposable(raw) {\n  if (!raw || !raw.includes(\"@\")) return !!raw;\n  return DISPOSABLE.includes(raw.trim().toLowerCase().split(\"@\").pop());\n}\n\nconst flags = [];\nif (!isValidPhone(lead[\"Phone\"])) flags.push(\"invalid_contact\");\nif (isDisposable(lead[\"Email\"]) && !flags.includes(\"invalid_contact\")) flags.push(\"invalid_contact\");\n\nconst missing = [\"Budget\",\"Timeline\",\"Financing\",\"Preferred area/s\"].filter(f => !String(lead[f] || \"\").trim());\nif (missing.length) flags.push(\"incomplete_submission:\" + missing.join(\",\"));\n\nreturn { json: { ...lead, valid: flags.length === 0, flags } };"
+      }
+    },
+    {
+      "id": "isValid",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [780, 320],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.valid}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "score",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 180],
+      "parameters": {
+        "jsCode": "const FINANCING = {\"Cash buyer\":30,\"Pre-approved mortgage\":25,\"Needs financing, not yet applied\":12,\"Not sure / no answer\":0};\nconst TIMELINE = {\"Immediately / within 30 days\":25,\"1\\u20133 months\":18,\"3\\u20136 months\":8,\"Just researching / no timeline\":0};\nconst AREA_TIER = {\"Active Listing\":20,\"General Coverage\":10};\n\nconst lead = $input.item.json;\nconst reference = $('Read Reference Data').all().map(i => i.json);\nconst ref = reference.find(r => (r[\"Area\"] || \"\").trim() === (lead[\"Preferred area/s\"] || \"\").trim());\n\nfunction parseNumber(raw) {\n  const m = String(raw || \"\").match(/([\\d,]*\\.?\\d+)\\s*(k|m)?/i);\n  if (!m) return null;\n  let v = parseFloat(m[1].replace(/,/g, \"\"));\n  if (/k/i.test(m[2])) v *= 1000;\n  if (/m/i.test(m[2])) v *= 1000000;\n  return v;\n}\n\nconst financingScore = FINANCING[lead[\"Financing\"]] || 0;\nconst timelineScore = TIMELINE[lead[\"Timeline\"]] || 0;\nconst areaScore = ref ? (AREA_TIER[ref[\"Tier\"]] || 0) : 0;\n\nlet budgetScore = 0;\nconst budget = parseNumber(lead[\"Budget\"]);\nif (budget !== null && ref && ref[\"Typical Price\"]) {\n  const typical = parseFloat(ref[\"Typical Price\"]);\n  const pctDiff = Math.abs(budget - typical) / typical;\n  budgetScore = pctDiff <= 0.10 ? 25 : pctDiff <= 0.25 ? 12 : 0;\n}\n\nconst total = financingScore + timelineScore + budgetScore + areaScore;\nconst label = total >= 80 ? \"hot\" : total >= 50 ? \"warm\" : \"cold\";\n\nreturn { json: { ...lead, financingScore, timelineScore, budgetScore, areaScore, total, label } };"
+      }
+    },
+    {
+      "id": "route",
+      "name": "Route by Label",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1300, 180],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+                "conditions": [{ "leftValue": "={{$json.label}}", "rightValue": "hot", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "outputKey": "hot"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+                "conditions": [{ "leftValue": "={{$json.label}}", "rightValue": "warm", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "outputKey": "warm"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+                "conditions": [{ "leftValue": "={{$json.label}}", "rightValue": "cold", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "outputKey": "cold"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "hotEmail",
+      "name": "Send Hot Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 40],
+      "parameters": {
+        "sendTo": "={{$json.Email}}",
+        "subject": "=Let's get you in to see {{$json['Preferred area/s']}} properties",
+        "message": "=Hi {{$json['Full Name']}},<br><br>Thanks for reaching out about {{$json['Preferred area/s']}} - I'd like to get you viewing options right away. What's the best time to reach you today by phone?<br><br>Talk soon"
+      }
+    },
+    {
+      "id": "warmEmail",
+      "name": "Send Warm Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 180],
+      "parameters": {
+        "sendTo": "={{$json.Email}}",
+        "subject": "=Thanks for your interest, {{$json['Full Name']}}",
+        "message": "=Hi {{$json['Full Name']}},<br><br>Thanks for your interest in {{$json['Preferred area/s']}}. One of our agents will follow up with you as soon as possible.<br><br>In the meantime, feel free to browse our current listings."
+      }
+    },
+    {
+      "id": "coldEmail",
+      "name": "Send Cold Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 320],
+      "parameters": {
+        "sendTo": "={{$json.Email}}",
+        "subject": "=Thanks for stopping by, {{$json['Full Name']}}",
+        "message": "=Hi {{$json['Full Name']}},<br><br>Thanks for your interest in {{$json['Preferred area/s']}}. No pressure at all - browse listings whenever you're ready."
+      }
+    },
+    {
+      "id": "writeScore",
+      "name": "Write Score to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1820, 180],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "16-nZM9tV6XcI2knna5NlZ4crN5IUZH3mmUMPUoW7dxI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Form responses 1", "mode": "name" },
+        "columnToMatchOn": "Email",
+        "valueToMatchOn": "={{$json.Email}}"
+      }
+    },
+    {
+      "id": "adminAlert",
+      "name": "Send Admin Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1040, 480],
+      "parameters": {
+        "sendTo": "baraakhaldi77@gmail.com",
+        "subject": "=Lead needs manual review: {{$json['Full Name']}}",
+        "message": "=Flags: {{$json.flags.join(', ')}}<br><br>Please review this row in the Leads sheet."
+      }
+    },
+    {
+      "id": "markReview",
+      "name": "Mark Needs Review",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1300, 480],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "16-nZM9tV6XcI2knna5NlZ4crN5IUZH3mmUMPUoW7dxI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Form responses 1", "mode": "name" },
+        "columnToMatchOn": "Email",
+        "valueToMatchOn": "={{$json.Email}}"
+      }
+    }
+  ],
+  "connections": {
+    "New Form Submission": { "main": [[{ "node": "Read Reference Data", "type": "main", "index": 0 }]] },
+    "Read Reference Data": { "main": [[{ "node": "Validate Lead", "type": "main", "index": 0 }]] },
+    "Validate Lead": { "main": [[{ "node": "Valid?", "type": "main", "index": 0 }]] },
+    "Valid?": {
+      "main": [
+        [{ "node": "Score Lead", "type": "main", "index": 0 }],
+        [{ "node": "Send Admin Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Score Lead": { "main": [[{ "node": "Route by Label", "type": "main", "index": 0 }]] },
+    "Route by Label": {
+      "main": [
+        [{ "node": "Send Hot Email", "type": "main", "index": 0 }],
+        [{ "node": "Send Warm Email", "type": "main", "index": 0 }],
+        [{ "node": "Send Cold Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Hot Email": { "main": [[{ "node": "Write Score to Sheet", "type": "main", "index": 0 }]] },
+    "Send Warm Email": { "main": [[{ "node": "Write Score to Sheet", "type": "main", "index": 0 }]] },
+    "Send Cold Email": { "main": [[{ "node": "Write Score to Sheet", "type": "main", "index": 0 }]] },
+    "Send Admin Alert": { "main": [[{ "node": "Mark Needs Review", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

@@ -22,17 +22,14 @@ def read_sheet(service, spreadsheet_id, sheet_name):
 
 
 def read_reference_data(service, spreadsheet_id, sheet_name):
+    """Reference Data sheet is Area | Tier (Low/Medium/Expensive) - a plain
+    district -> price-tier classification, not a per-listing price table."""
     _, rows = read_sheet(service, spreadsheet_id, sheet_name)
     reference = {}
     for row in rows:
-        if len(row) < 3:
+        if len(row) < 2 or not row[0].strip():
             continue
-        area, raw_price, tier = row[0].strip(), row[1], row[2].strip()
-        try:
-            price = float(str(raw_price).replace(",", ""))
-        except ValueError:
-            continue
-        reference[area] = {"typical_price": price, "tier": tier}
+        reference[row[0].strip()] = row[1].strip()
     return reference
 
 

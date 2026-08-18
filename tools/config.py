@@ -53,15 +53,21 @@ TIMELINE_SCORES = {
 }
 
 AREA_TIER_SCORES = {
-    "Active Listing": 20,
-    "General Coverage": 10,
+    "Expensive": 20,
+    "Medium": 14,
+    "Low": 7,
     # anything not found in Reference Data -> 0
 }
 
-BUDGET_FIT_BANDS = {
-    "close_pct": 0.10,       # within ~10% -> 25 pts
-    "negotiable_pct": 0.25,  # within ~25% -> 12 pts, else 0
-}
+# Absolute budget thresholds (not compared against a per-area reference
+# price - simpler to maintain, no per-area pricing data required).
+# Each tuple is (minimum budget for this tier, points). Highest matching
+# minimum wins; below the lowest minimum scores 0.
+BUDGET_SCORE_BANDS = [
+    (250_000, 25),
+    (150_000, 16),
+    (50_000, 8),
+]
 
 SCORE_BANDS = {
     "hot_min": 80,
@@ -101,8 +107,8 @@ EMAIL_TEMPLATES = {
         "subject": "Thanks for your interest, {{name}}",
         "body": (
             "Hi {{name}},\n\n"
-            "Thanks for your interest in {{area}}. One of our agents will follow up with you within "
-            "the next 1-2 business days to talk through what you're looking for.\n\n"
+            "Thanks for your interest in {{area}}. One of our agents will follow up with you as "
+            "soon as possible to talk through what you're looking for.\n\n"
             "In the meantime, feel free to browse our current listings."
         ),
     },
