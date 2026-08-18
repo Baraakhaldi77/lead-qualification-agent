@@ -1,0 +1,31 @@
+name: Lead Qualification Agent
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes - safely within GitHub's free minutes for a private repo
+  workflow_dispatch: {}      # lets you trigger a run manually from the Actions tab, for testing
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - run: pip install -r requirements.txt
+
+      - name: Write Google credentials and config from secrets
+        env:
+          CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+          TOKEN_JSON: ${{ secrets.TOKEN_JSON }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          printf '%s' "$CREDENTIALS_JSON" > credentials.json
+          printf '%s' "$TOKEN_JSON" > token.json
+          printf '%s' "$ENV_FILE" > .env
+
+      - run: python -m agent.run --once
