@@ -2,7 +2,7 @@ name: Lead Qualification Agent
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 minutes - safely within GitHub's free minutes for a private repo
+    - cron: "*/5 * * * *"   # every 5 minutes - GitHub's fastest allowed schedule interval
   workflow_dispatch: {}      # lets you trigger a run manually from the Actions tab, for testing
 
 jobs:
